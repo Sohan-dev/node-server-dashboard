@@ -3,17 +3,58 @@ const express = require("express");
 const path = require("path");
 const app = express();
 const cors = require("cors");
+const { Server } = require("socket.io");
+const moment = require("moment");
 
 const bodyParser = require("body-parser");
 const urlencodedParser = bodyParser.json();
 
-// var io = require("socket.io").listen(3001);
+const server = http.createServer(app);
+// const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3001", // or "*" to allow everything for testing
+    methods: ["GET", "POST"],
+  },
+});
+io.on("connection", (socket) => {
+  console.log("React app connected:", socket.id);
+});
 const {
   mySqlConnection,
   connectToDb,
   executeQuery,
 } = require("./src/Utils/db");
-const moment = require("moment");
+
+const dbConfig = {
+  user: "sa",
+  password: "12345678",
+  server: "DELL-STA-SHUBHA/SQLEXPRESS",
+  database: "productionDB",
+  options: { encrypt: false, trustServerCertificate: true },
+};
+
+// Function to fetch latest data
+async function fetchLatestData() {
+  try {
+    let pool = await sql.connect(dbConfig);
+    let result = await pool
+      .request()
+      .query("SELECT TOP 1 * FROM PlantProduction ORDER BY Timestamp DESC");
+    return result.recordset[0];
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// Poll database every 5 seconds and emit to React
+setInterval(async () => {
+  const data = await fetchLatestData();
+  if (data) {
+    io.emit("plant-data", data);
+    console.log("Emitted:", data.Temperature);
+  }
+}, 5000);
 
 async function fetchData() {
   await connectToDb(); // Connect to the database

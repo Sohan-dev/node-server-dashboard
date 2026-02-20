@@ -2,10 +2,12 @@ const sql = require("mssql");
 const express = require("express");
 const app = express();
 const cors = require("cors");
+const http = require("http");
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+const { Server } = require("socket.io");
 
 const config = {
   user: "sa",
@@ -18,6 +20,41 @@ const config = {
   },
   port: 1433,
 };
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3001", // or "*" to allow everything for testing
+    methods: ["GET", "POST"],
+  },
+});
+io.on("connection", (socket) => {
+  console.log("React app connected:", socket.id);
+});
+
+// Function to fetch latest data
+async function fetchLatestData() {
+  try {
+    let pool = await sql.connect(config);
+    let result = await pool
+      .request()
+      .query(
+        "SELECT TOP 1 Timestamp, Temperature FROM PlantProduction ORDER BY Timestamp DESC",
+      );
+    return result.recordset[0];
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// Pull database every 5 seconds and emit to React
+setInterval(async () => {
+  const data = await fetchLatestData();
+  if (data) {
+    io.emit("plant-data", data);
+    console.log("Emitted:", data);
+  }
+}, 5000);
 
 async function getPivotedData(gapMinutes, startDate, endDate) {
   try {
@@ -128,6 +165,6 @@ app.post("/api/history", async (req, res) => {
   }
 });
 
-app.listen(3000, () =>
+server.listen(3000, () =>
   console.log("Server running on port http://localhost:3000"),
 );
